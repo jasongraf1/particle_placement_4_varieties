@@ -32,6 +32,7 @@ brm_gauss_raw_gb_nz <- brm(
   prior = priors_gauss1,
   cores = 4,
   iter = 4000,
+  save_model = here::here("stan", "brm-gauss1_raw.stan"),
   file = here::here("model_output", "brm-gauss1_raw.rds"),
   file_refit = "on_change",
   refresh = 0
@@ -62,6 +63,7 @@ brm_gauss_scaled_gb_nz <- brm(
   prior = priors_gauss2,
   cores = 4,
   iter = 4000,
+  save_model = here::here("stan", "brm-gauss1_scaled.stan"),
   file = here::here("model_output", "brm-gauss2_scaled.rds"),
   file_refit = "on_change",
   refresh = 0
