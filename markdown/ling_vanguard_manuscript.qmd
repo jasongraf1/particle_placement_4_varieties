@@ -1,0 +1,1087 @@
+---
+title: "Modeling scalar ratings with Zero-One-Inflated Beta (ZOIB) regression"
+author: "Jason Grafmiller, Laura Rosseel, Benedikt Szmrecsanyi"
+date: "`r format(Sys.Date(), '%d %B, %Y')`"
+format:
+  html: 
+    toc: true
+    toc-location: left
+    fig-width: 6
+    fig-height: 4
+    theme: 
+      light: flatly
+      dark: darkly
+    mainfont: 'Roboto'
+    fontsize: 100%
+    df-print: kable
+  docx:
+    reference-doc: word_template.docx
+    number-sections: true
+  pdf: 
+    number-sections: true
+    mainfont: Times New Roman
+    pdf-engine: pdflatex
+knitr:
+  opts_chunk: 
+    cache.path: "../cache/"
+    fig.path: "../figures/"
+    tidy: styler
+execute:
+  echo: false
+  warning: false
+  message: false
+  cache: false
+tbl-cap-location: top
+fig-cap-location: bottom
+filters:
+  - lightbox
+lightbox: auto
+bibliography: [particle_verb_experiment.bib, ../../libs/main_library.bib]
+csl: unified-style-linguistics.csl
+---
+
+## Introduction
+
+<!-- The following discussion and analysis is adapted from some very helpful tutorials [here](https://mvuorre.github.io/posts/2019-02-18-analyze-analog-scale-ratings-with-zero-one-inflated-beta-models/) and [here](https://www.andrewheiss.com/blog/2021/11/08/beta-regression-guide/). -->
+
+In experiments of acceptability judgements, linguistic preferences, or "perceived wellformedness" [@featherston_response_2021, 44], participant responses are typically collected using either ordinal (e.g. Likert) or numeric response scales. Over the years a number of rating tasks have been developed for investigating language users' perceptions, and these tasks come with their various advantages and disadvantages [see @featherston_response_2021; @buchstaller_how_2011a for reviews]. A recent example with a variationist/Labovian angle comes from @bresnan_predicting_2010a, who used a continuous scale to measure preferences between two semantically equivalent syntactic variants. In their study, participants were instructed to distribute 100 points to reflect their preference for either the double object dative (*give Alex the keys*) or the prepositional dative (*give the keys to Alex*) in a given context, and the stronger the preference for a given option, the more points they should allocate to that option. Recent work has adapted this method for online presentation, using a visual slider in place of participants entering points manually [@engel_assessing_2022; @szmrecsanyi_comparative_Forthcoming].
+
+While conceptually appealing, a practical problem with ordinal scales is that they are unlikely to provide normally distributed data. Nevertheless, researchers have often analyzed responses from these scales with models that assume normality [@liddell_analyzing_2018], although the use of ordinal regression models is becoming more common [CITATION]. Numeric measurements, such as those obtained from (visual) magnitude estimation [e.g. @buchstaller_how_2011a, 37-38] or slider bars [e.g. @engel_assessing_2022], offer greater resolution of the acceptability/preference scale, and it is tempting to assume that such ratings can be considered continuous between their low and high endpoints. Researchers using such scales have thus tended to analyze their data using standard linear models [@bresnan_predicting_2010a; @engel_assessing_2022; @szmrecsanyi_comparative_Forthcoming]. However, because slider scales are necessarily bounded at the low and high ends, these scales are also unlikely to provide normally distributed responses. Evidence from recent studies of linguistic preferences suggests that it is common for slider responses to bunch at the ends of the slider scale, potentially making the deviation from normality even more severe. In light of this, it is worth reconsidering whether models that assume normally distributed data, e.g. linear regression models, are appropriate for analyzing analog rating data.
+
+In this article we introduce a method known as Zero-One Inflated Beta (ZOIB) regression [@ferrari_beta_2004; @ospina_inflated_2008; @liu_review_2018], which can be fruitfully applied to the kind of proportional data obtained in studies that use fixed rating scales. Beta regression models, and their inflated counterparts, are designed to model continuous distributions that are bounded at the upper and lower ends, and are therefore better suited than standard linear models for analyzing data representing proportions or other bounded scales. To our knowledge this method has not been used much in linguistics, but we believe it has considerable untapped potential for experimental linguists using analog ratings data. We illustrate the ZOIB method with a case study involving experimentally elicited ratings using a slider task, and we briefly consider the problems facing analysts trying to model such data. In the next section, we describe the experimental case study, followed by a brief visual exploration of the results in @sec-data-exploration. In @sec-zoib-model we apply ZOIB regression to our experimental data, starting with a brief overview of Beta distributions and Beta regression before moving on to a full anlysis of the ZOIB model. @sec-conclusion concludes.
+
+## Case study {#sec-case}
+
+For our case study, we use a subset of data from Szmrecsanyi & Grafmiller [-@szmrecsanyi_comparative_Forthcoming, Chapter 7], who examined preferences in the English particle placement alternation, as shown in (1) and (2), across four international varieties of English.
+
+(@) Jason ***picked up*** the book. [continuous variant]
+(@) Jason ***picked*** the book ***up***. [split variant]
+
+Participants were presented with authentic, contextualized examples of particle verbs (e.g. *pick up*, *rule out*, *put away*) taken from naturalistic corpora and were asked to indicate their preference for either the continuous or split variant. Participants were instructed to indicate their preferences by moving a slider toward the variant that seemed more "natural" in the provided excerpt. 
+
+@szmrecsanyi_comparative_Forthcoming were mainly interested in measuring the association between the length of the direct object and the preference for the split vs. continuous variant, and in exploring the extent to which those associations differ across varieties. We know from many corpus-based and experimental studies that the split variant is less likely the longer the direct object [@gries_multifactorial_2003a; @lohse_domain_2004a; @cappelle_contextual_2009a; @goldberg_tuning_2016; @grafmiller_mapping_2018b; @wulff_particle_2019a; @haddican_variation_2020]. Recent years have seen a rise in the use of sophisticated techniques for variationist modeling of corpus data [e.g. @barth_multimodel_2017a; @szmrecsanyi_variationbased_2019; @tagliamonte_models_2012a; @wulff_particle_2019a], and in a nod toward greater "methodological pluralism" [@klavan_cognitive_2016a], the use of experimental studies as a complement to corpus-based observational studies has also become increasingly popular [e.g. @gilquin_corpora_2009a; @hoffmann_preposition_2011a; @ford_studying_2013;  @divjak_machine_2016a; @engel_assessing_2022]. Work in this vein has tended to find robust correlations between patterns in observational, i.e. corpus-based, and experimental data [@bresnan_predicting_2010a; @divjak_machine_2016a; @klavan_cognitive_2016a; @engel_assessing_2022].
+
+Our experimental case study was thus guided by two related research questions:
+
+1. When participants are provided with the same contextual information as a model of corpus data, do they exhibit a graded preferences for the use of a particular variant similar to probabilities derived from the corpus?
+2. If a change in direct object length is associated with changes to the corpus probability of a variant, is that change in length also associated with changes to participants' ratings for that same variant?
+
+The hypothesis is that language production and meta-linguistic judgements are tapping into similar experience-based aspects of linguistic knowledge, therefore we should see clear correlations between experimental ratings and probabilities derived from models of observational data. Furthermore, these correlations should covary with changes to the specific linguistic context as well as general dialectal differences. For simplicity, we include data from only British and New Zealand English speakers in this paper.
+
+ 
+
+### Corpus analysis
+
+The experimental design followed the approach of @bresnan_predicting_2010a, where participants were presented with observations of a given alternation sampled directly from corpus datasets, and asked to distribute 100 points between two competing variants. The test alternations are presented as part of their surrounding context in order to assess the influence of contextual factors and to increase the overall ecological validity of the stimulus items [but see @featherston_response_2021 for a more critical review of the potential influence of context in judgement studies].
+
+Using genuine corpus examples as stimulus items also allows us to directly compare the degree to which participants' preferences for the respective variants aligns with the probabilities derived from statistical models of corpus data. 
+
+Details of the corpus data and annotation procedures can be found  in @grafmiller_mapping_2018b and corresponding online repository available at <https://osf.io/x8vyw/>. 
+
+[More on corpus model]
+
+### Participants
+
+British participants were recruited via the Prolific online recruitment platform ([https://prolific.co](https://prolific.co)), and the recruitment services offered by Qualtrics were used to remotely recruit participants from New Zealand.
+
+For each country, we initially recruited 100 participants at random, with the expectation that an unknown percentage would be filtered out based on certain criteria. We included several post-test demographic questions about where participants grew up and lived most of their lives, whether English was their first language, and whether they had taken a linguistics course before. We excluded any participants who reported growing up in a country other than the target one, and anyone who reported having taken a linguistics class or claiming not to be a native speaker. We also excluded participants who either were too quick or too slow in their responses as well as those who failed the comprehension checks (see below). In total, 141 participants were included in the final analysis (BrE = 60, NZE = 81).
+
+### Materials
+
+Thirty stimulus items were created, each consisting of an edited excerpt from the BrE component of the International Corpus of English. For the presentation of the items, we inserted the relevant choices into the text, where they were highlighted for the participant. An example item is shown in (3). The order of the split and continuous variants was randomized across items.
+
+(@) Much time and effort was spent on board structures---experiments were tried with worker-directors. They failed because it was almost impossible to define their role, particularly as it was clear that they represented no one. They were not elected by their fellow workers---nor even appointed by their trade unions. So the steel industry developed, as had many of the earlier nationalized industries, into a prime example of conflict between management and labour. There was little evidence of management and workers trying in harmony to create an enterprise to serve the nation. Nationalization had merely [**taken the ownership and ultimate control away** / **taken away the ownership and ultimate control**] from private investors, and had passed it on to the politicians.
+
+We sampled items from across the range of corpus model probabilities derived from a model of BrE ICE data, as described above. Specifically, six items were selected from each of five bins corresponding to the probability quintiles of the distribution of corpus model predictions. We selected items with varying direct object lengths within each bin as much as possible. Figure REF shows the fitted corpus model probabilities for the thirty items used in our experiments.
+
+<!-- \begin{figure}[htb] -->
+<!-- \centering -->
+<!-- \includegraphics[width=\textwidth]{figures/ch7_experiment/07_plot00-items_by_corpus_preds.pdf} -->
+<!-- \caption{\label{fig:items_by_corpus} Experimental items vs.\ corpus model predicted probabilities.} -->
+<!-- \end{figure} -->
+
+Where necessary, items were adapted to fit a British or New Zealand context by changing or removing names or lexical items that might not be familiar to speakers of the respective national varieties. After editing, all experimental items were independently reviewed and assessed for authenticity by native speakers of English from Great Britain and New Zealand.
+
+We also created fifteen filler items, which presented lexical or grammatical choices comparable to the particle placement alternation, e.g. the dative alternation, and variation among relativizers (*that* vs. *which*). The full lists of test and filler items is presented in the Appendix.
+
+
+### Procedure 
+
+The survey was delivered via Qualtrics' online interface. Participants were shown a welcome page with instructions on how the survey would work (Figure REF). 
+
+Rather than assign points directly to the items, participants were presented with a slider button with the two variants on either end, and asked to move the slider towards the variant that they felt sounded more natural in the context provided. Participants were shown an example illustrating the task as part of the initial instructions.
+
+As an additional check, we included five comprehension questions about a few texts' content in order to test whether participants were reading the texts. Participants who answered more than two comprehension questions incorrectly were excluded. At the end of the survey, participants were asked to provide personal information regarding their gender, age, education level, and degree of familiarity and comfort with English.
+
+To keep the survey length to a manageable duration, we created two blocks of 15 test questions together with the 15 filler items. For the first block, three test items were randomly selected from each probability bin, and the remaining items were used in the second block. Each participant saw only one block, thus each participant saw only half of the test items. Pilot tests estimated the task to take approximately 20 minutes, and participants who took less than 10 minutes or longer than 1 hour were excluded.
+
+
+## Data exploration {#sec-data-exploration}
+
+```{r}
+#| label: libs
+#| echo: false
+
+libs <- c(
+  "here", # project file path management
+  "tidyverse", # ggplot, dplyr, etc.
+  "patchwork", # combine plots
+  "scales", # for nice plotting options
+  "gghalves", # Special half geoms
+  "ggbeeswarm", # Special distribution-shaped point jittering
+  "ggrepel", # Add text annotations to points
+  "rstan", # Stan in R
+  "brms", # Bayesian modeling through Stan
+  "bayestestR", 
+  "tidybayes", # Manipulate Stan objects in a tidy way
+  "broom", # Convert model objects to data frames
+  "broom.mixed" # Convert brms model objects to data frames
+)
+
+invisible(lapply(libs, library, character.only = TRUE))
+```
+
+```{r}
+# Set plot theme.
+theme_set(theme_classic())
+theme_update(
+  # strip.background = element_rect(color = "white"),
+  strip.text = element_text(hjust = 0.1, size = rel(1.3), color = "black")
+  )
+
+var_cols <- scales::brewer_pal(palette = "Set1")(2)
+reg_cols <- scales::brewer_pal(palette = "Dark2")(4)
+```
+
+Here first explore the distribution of our ratings. Ratings originally ranged from 0, indicating strong preference for the continuous variant, and 100, indicating strong preference for the split variant. Intermediate values reflect weaker preferences in one direction or another, and ratings of 50 reflect no preference. Ratings were converted to range from [0, 1] for further analysis. 
+
+```{r}
+#| label: data
+#| echo: false
+
+ratings_df <- here("data", "ratings_particle_verbs_2_vars.txt") |>
+  read.delim() |> 
+  mutate(Variety = as.factor(Variety)) |> 
+  group_by(id) |> 
+  mutate(Trial = 1:15) |> 
+  ungroup()
+```
+
+
+### Distribution of ratings
+
+We start with a look at the raw data. If we look at the distributions of the ratings, we find lots of ratings of 0 or 100, and heavier distributions near the ends and the center. 
+
+
+```{r}
+#| label: fig-plot1
+#| fig-cap: "Experimental ratings by variety"
+#| fig-subcap: 
+#|   - "Distribution over all trials"
+#|   - "Proportion of trials with ratings either 0 or 100"
+#| layout-ncol: 2
+#| fig-width: 5
+#| fig-height: 4
+
+(ggplot(ratings_df, aes(x = Variety, y = rating_raw)) +
+  geom_half_point(aes(color = Variety), 
+                  transformation = position_quasirandom(width = 0.1),
+                  side = "l", size = 0.5, alpha = 0.5) +
+  geom_half_boxplot(aes(fill = Variety), side = "r", width = .6, alpha = .5) + 
+  scale_color_brewer(palette = "Set1") +
+  scale_fill_brewer(palette = "Set1") +
+  guides(color = "none", fill = "none") +
+  labs(x = "", y = "Rating")) 
+
+ratings_df |>
+  dplyr::filter(rating_prop %in% 0:1) |>
+  count(Variety, name = "N_extreme") |>
+  left_join(
+    ratings_df |>
+      dplyr::filter(rating_prop == 1) |>
+      count(Variety, name = "N_one")
+  ) |>
+  left_join(count(ratings_df, Variety, name = "N_total")) |>
+  mutate(
+    prop_extreme = round(N_extreme/N_total, 3), # proportion of n that are 0 or 1
+    prop_extreme_is_one = round(N_one/N_extreme,3) # proportion of extreme that are 1
+    ) |> 
+  ggplot(aes(Variety, prop_extreme, fill = Variety)) +
+  geom_col(width = .7) +
+  geom_text(aes(label = prop_extreme), nudge_y = .03, size = 6) +
+  ylim(0, .6) +
+  scale_fill_brewer(guide = "none", palette = "Set1") +
+  labs(x = "", y = "Proportion of trials")
+```
+
+If we just consider the number of trials with a rating of 0 or 1, we can see that for NZ participants,  over 45% of trials were given either 0 or 1 (100) rating, however there doesn't seem to be any bias *within* the extreme ratings. That is, they don't seem to be more likely to give a 0 than a 1 (100).
+
+One thing to look for is fatigue and or familiarity with the task. We might expect, for instance, that as particpants got tired, they tended to use the end points more. Or alternatively, they became more familiar with the task, and so started using the full range more. 
+
+We don't seem to find any clear patterns in the ratings across trials, however. That is, it does not seem to be the case that participants were using the ends of the scales more or less as they proceeded through the experiment. @fig-rat-by-trial-ext tracks the use of extreme ratings over trials. Lines trending up or down in the plots below would indicate participants were treating the task differently as they saw more examples, but this does not seem to be the case.
+
+
+```{r}
+#| label: fig-rat-by-trial-ext
+#| fig-cap: "Ratings by trial per variety, with black lines showing the overall proportion of extreme {0,1} ratings, and dots showing individual observations. On average, we do not find a tendency for participants to use the endpoints more or less as the experiment went on."
+#| fig-subcap: 
+#|   - "British participants"
+#|   - "New Zealand participants"
+#| fig-width: 7
+#| fig-height: 5
+#| layout-ncol: 2
+
+d <- ratings_df |> 
+  dplyr::filter(rating_raw %in% c(0, 100)) |> 
+  count(Variety, Trial, name = "N_ext") |> 
+  left_join(
+    count(ratings_df, Variety, Trial, name = "N"),
+    by = c("Variety", "Trial")
+  ) |> 
+  ungroup() |> 
+  mutate(Prop_ext = N_ext/N)
+
+d |> 
+  dplyr::filter(Variety == "BrE") |> 
+  ggplot(aes(Trial, Prop_ext)) +
+  geom_point(data = ratings_df, aes(y = rating_prop), alpha = .3, 
+             size = 1, position = position_jitter(width = .2), 
+             color = var_cols[1]) +
+  geom_line(linewidth = 3, color = "white") +
+  geom_line(linewidth = 1, color = "black") +
+  scale_color_brewer(guide = "none", palette = "Set1") +
+  scale_x_continuous(breaks = seq(1,15,2)) +
+  labs(y = "")
+d |> 
+  dplyr::filter(Variety == "NZE") |> 
+  ggplot(aes(Trial, Prop_ext)) +
+  geom_point(data = ratings_df, aes(y = rating_prop), alpha = .3, 
+             size = 1, position = position_jitter(width = .2), 
+             color = var_cols[2]) +
+  geom_line(linewidth = 3, color = "white") +
+  geom_line(linewidth = 1, color = "black") +
+  scale_color_brewer(guide = "none", palette = "Set1") +
+  scale_x_continuous(breaks = seq(1,15,2)) +
+  labs(y = "")
+```
+
+We could consider the same for the very middle of the rating range: perhaps people tended to use the midpoint more or less as the study went on. Again, we don't see much evidence of this (@fig-rat-by-trial-mid).
+
+```{r}
+#| label: fig-rat-by-trial-mid
+#| fig-cap: "Ratings by trial per variety, with black lines showing the overall proportion of (45, 55) ratings, and dots showing individual observations. On average, we do not find a tendency for participants to use the midpoint of the scale more or less as the experiment went on."
+#| fig-subcap: 
+#|   - "British participants"
+#|   - "New Zealand participants"
+#| fig-width: 6
+#| fig-height: 4
+#| layout-ncol: 2
+
+d <- ratings_df |>
+  group_by(id) |>
+  mutate(Trial = 1:15) |>
+  ungroup() |>
+  dplyr::filter(rating_raw < 55 & rating_raw > 45) |>
+  count(Variety, Trial, name = "N_ext") |>
+  left_join(
+    count(ratings_df, Variety, Trial, name = "N"),
+    by = c("Variety", "Trial")
+  ) |>
+  ungroup() |>
+  mutate(Prop_ext = N_ext/N)
+  
+d |> 
+  dplyr::filter(Variety == "BrE") |> 
+  ggplot(aes(Trial, Prop_ext)) +
+  geom_point(data = ratings_df, aes(y = rating_prop), alpha = .3,
+             size = 1, position = position_jitter(width = .2), color = var_cols[1]) +
+  geom_line(linewidth = 3, color = "white") +
+  geom_line(linewidth = 1, color = "black") +
+  scale_x_continuous(breaks = seq(1,15,2)) +
+  labs(y = "")
+d |> 
+  dplyr::filter(Variety == "NZE") |> 
+  ggplot(aes(Trial, Prop_ext)) +
+  geom_point(data = ratings_df, aes(y = rating_prop), alpha = .3,
+             size = 1, position = position_jitter(width = .2), color = var_cols[2]) +
+  geom_line(linewidth = 3, color = "white") +
+  geom_line(linewidth = 1, color = "black") +
+  scale_x_continuous(breaks = seq(1,15,2)) +
+  labs(y = "")
+```
+
+These checks are a good sign that they were doing the task as intended :)
+
+
+### Correlations among ratings and corpus predictions {#sec-corrs}
+
+The correlations between corpus predictions and ratings is strong (@tbl-cors), and surprisingly linear. Again, items were sampled from across the range of corpus model predictions, so we expect to see a strong association here [see @szmrecsanyi_comparative_Forthcoming, 155-159].
+
+```{r}
+#| label: fig-rat-by-corpus-preds
+#| fig-cap: "Ratings by corpus model predictions, with dots showing invidual observations (smooths: solid = linear; dashed = LOESS)"
+#| fig-subcap: 
+#|   - "British participants"
+#|   - "New Zealand participants"
+#| fig-width: 6
+#| fig-height: 4
+#| layout-ncol: 2
+
+ratings_df |>
+  dplyr::filter(Variety == "BrE") |> 
+  ggplot(aes(Corpus_pred, rating_prop)) +
+  geom_point(alpha = .2, size = 1, color = var_cols[1]) +
+  geom_smooth(method = "lm", formula = y ~ x, se = F, color = "black") +
+  geom_smooth(method = "loess", se = F, color = "grey40", linetype = 2) +
+   scale_color_brewer(guide = "none", palette = "Set1") +
+  labs(x = "corpus log odds", y = "")
+ratings_df |>
+  dplyr::filter(Variety == "NZE") |> 
+  ggplot(aes(Corpus_pred, rating_prop)) +
+  geom_point(alpha = .2, size = 1, color = var_cols[2]) +
+  geom_smooth(method = "lm", formula = y ~ x, se = F, color = "black") +
+  geom_smooth(method = "loess", se = F, color = "grey40", linetype = 2) +
+   scale_color_brewer(guide = "none", palette = "Set1") +
+  labs(x = "corpus log odds", y = "")
+```
+
+```{r}
+#| label: tbl-cors
+#| tbl-cap: "Spearman rank correlations between ratings and corpus-model predictions"
+#| tbl-subcap: 
+#|   - "Across all trials"
+#|   - "Averaged across items"
+#| layout-ncol: 2
+
+ratings_df |>
+  group_by(Variety) |>
+  summarise(cor = round(cor(Corpus_pred, rating_raw, method = "spearman"), 3))
+ratings_df |>
+  group_by(VerbPart, Variety) |>
+  summarise(
+    corpus_mean = mean(Corpus_pred),
+    rating_mean = mean(rating_raw)
+  ) |>
+  group_by(Variety) |>
+  summarise(cor = round(cor(corpus_mean, rating_mean, method = "spearman"), 3)) 
+```
+
+
+If we average ratings by items (@fig-rat-by-corpus-preds2), the by-variety correlations are even stronger (@tbl-cors).
+
+```{r}
+#| label: fig-rat-by-corpus-preds2
+#| fig-cap: "Ratings by corpus model predictions, averaged by verb/item"
+#| fig-subcap: 
+#|   - "British participants"
+#|   - "New Zealand participants"
+#| fig-width: 6
+#| fig-height: 4
+#| layout-ncol: 2
+
+ratings_df |>
+  dplyr::filter(Variety == "BrE") |> 
+  group_by(VerbPart) |>
+  summarise(
+    rating_prop = mean(rating_prop),
+    Corpus_pred = mean(Corpus_pred)
+  ) |>
+  ggplot(aes(Corpus_pred, rating_prop)) +
+  geom_point(col = var_cols[1]) +
+  geom_text_repel(aes(label = VerbPart)) +
+  geom_smooth(method = "lm", formula = y ~ x, se = F) +
+  labs(x = "Corpus log odds", y = "")
+ratings_df |>
+  dplyr::filter(Variety == "NZE") |> 
+  group_by(VerbPart) |>
+  summarise(
+    rating_prop = mean(rating_prop),
+    Corpus_pred = mean(Corpus_pred)
+  ) |>
+  ggplot(aes(Corpus_pred, rating_prop)) +
+  geom_point(col = var_cols[2]) +
+  geom_text_repel(aes(label = VerbPart)) +
+  geom_smooth(method = "lm", formula = y ~ x, se = F) +
+  labs(x = "Corpus log odds", y = "")
+```
+
+
+
+### Non-normality of the data
+
+So we find strong correlations that look linear, but there are still a few things to consider here.
+
+First, the distributions of the ratings are clearly not normal (@fig-hist1). 
+
+```{r}
+#| label: fig-hist1
+#| fig-cap: "Distribution of ratings by variety."
+#| fig-subcap: 
+#|   - "British participants"
+#|   - "New Zealand participants"
+#| fig-width: 6
+#| fig-height: 4
+#| layout-ncol: 2
+
+ratings_df |> 
+  dplyr::filter(Variety == "BrE") |> 
+  ggplot(aes(rating_raw)) +
+  geom_histogram(aes(y = stat(ncount)), bins = 51, color = "white",
+                 fill = var_cols[1]) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, .05))
+  ) +
+  scale_x_continuous(breaks = pretty_breaks()) +
+  labs(x = "rating") +
+  scale_fill_brewer(guide = "none", palette = "Set1") +
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+    )
+ratings_df |> 
+  dplyr::filter(Variety == "NZE") |> 
+  ggplot(aes(rating_raw)) +
+  geom_histogram(aes(y = stat(ncount)), bins = 51, color = "white",
+                 fill = var_cols[2]) +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, .05))
+  ) +
+  scale_x_continuous(breaks = pretty_breaks()) +
+  labs(x = "rating") +
+  scale_fill_brewer(guide = "none", palette = "Set1") +
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+    )
+```
+
+
+
+This *should* concern us if we're going to try to fit these with a linear model assuming a normal distribution. The problem is easy to see if we try to impose a simple gaussian linear model (mean = 53.7, SD = 39.1) on the data, as in @fig-plot3. The blue line shows that a considerable portion of the probability density in the normal distribution lies outside the range of possible values, so the model is predicting impossible values quite a lot.
+
+```{r}
+#| label: fig-plot3
+#| fig-cap: "Observed ratings vs. a simple gaussian linear model, e.g. `lm(rating ~ 1)`"
+#| fig-width: 4
+#| fig-height: 2.75
+
+normal <- tibble(
+  x = seq(-100, 200, by = 1),
+  y = dnorm(x, mean(ratings_df$rating_raw), sd(ratings_df$rating_raw))
+) |>
+  mutate(y = y / max(y))
+
+ggplot(ratings_df, aes(rating_raw)) +
+  geom_histogram(aes(y = stat(ncount)), bins = 101, color = "white") +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, .05))
+  ) +
+  scale_x_continuous(breaks = pretty_breaks()) +
+  labs(x = "rating") +
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  ) +
+  geom_line(
+    data = normal,
+    aes(x = x, y = y),
+    col = "dodgerblue", linewidth = 1
+  )
+```
+
+A few extreme values might be okay, but there is a lot of data at the ends of the scale. In some cased a linear model may "work" well enough, but this may just be our good luck (although Bresnan and co. seem not to have much issue either). We could debate how serious of an issue this really is, but it is worth considering alternatives that are intended to work with this kind of data, rather than using a method we know is (potentially seriously) flawed, even if it seems "good enough".
+
+One possible solution to this might be to transform the ratings to a more suitable scale such as a logit scale. But there are many cases where people gave a rating of 0 or 1, so a logit transform would yield too many `-Inf` and `Inf` values. We could alternatively assign values of .001 and .999 to these extreme cases before transforming, but this distorts the data, and it's best to use the raw data when we can. Another possible solution might be to use a **quasibinomial** logistic model, which works like standard logistic models but with proportional outcomes. The main problem is that standard R packages for mixed-effects models, e.g. `{lme4}`, do not allow us to use the quasibinomial, so we need something else. Supposedly fractional outcomes will work with the standard `binomial()` family (see [here](https://www.andrewheiss.com/blog/2021/11/08/beta-regression-guide/#2-fractional-logistic-regression) and [here](https://m-clark.github.io/posts/2019-08-20-fractional-regression/)), but early attempts we unsuccessful. Even a minimally simple model with only one random intercept for participant failed to converge. So if we want to use `{lme4}` we're left with only a linear mixed-effects model, as we used in @szmrecsanyi_comparative_Forthcoming. We think the results there are reasonable, but we can look further for other (better?) approaches.
+
+Finally, the distributions of ratings are heavily skewed toward the extremes in both varieties, and this would not change regardless how we transform the data. It may be worth exploring what this kind of skew might mean, and so a simple linear model (with or without transformation) seems less than ideal. So with these issues in mind, we turn to the  Zero-One Inflated beta (ZOIB) regression model.
+
+
+## Zero-One Inflated beta (ZOIB) regression model {#sec-zoib-model}
+
+The idea behind ZOIB models is described nicely in @vuorre_how_2019:
+
+"The zero-one-inflated beta (ZOIB) adds a separate discrete process for the {0, 1} values, using two additional parameters. Following convention, we shall call them (&alpha;) and (&gamma;). These parameters describe the probability of an observation being a 0 or 1 (&alpha;), and conditional on that, whether the observation was 1 (&gamma;).
+
+In other words, the model of outcomes under ZOIB is described by four parameters. The first is the probability that an observation is either 0 or 1. (Thus, 1 - &alpha; is the probability of a non-boundary observation.) If an observation is not 0 or 1, the datum is described by the beta distribution with some mean and precision &phi;. If an observation is 0 or 1, the probability of it being 1 is given by &gamma; (just like your usual model of binary outcomes, e.g. logistic regression). So you can think of the model as a kind of mixture of beta and logistic regressions, where the α parameter describes the mixing proportions. The mathematical representation of this model is given in [this vignette](https://cran.rstudio.com/web/packages/brms/vignettes/brms_families.html#zero-inflated-and-hurdle-models) [@burkner_brms_2017]."
+
+In short, ZOIB regression makes the model a mixture of three things:
+
+1. A logistic regression model that predicts if outcomes are extreme (0 or 1) or not (between 0 and 1). This is the **Zero-One Inflated component (ZOI)**
+2. A logistic regression model that predicts if any of the extreme values are 1. It predicts the probability of rating of 1, given that the observed rating was extreme, i.e. in {0, 1}. This is the **Conditional-One Inflated component (COI)**
+3. A **beta regression component** that predicts the non-extreme (between 0 and 1) values
+
+ZOIB does not give only one "effect" of a predictor on the ratings, but three, one for the continuous part, and one for each of the binary ZOI and COI parts.[^phi] The use of 'inflated' models is not uncommon (well, maybe in linguistics), and is possible for other kinds of models. For example, @winter_poisson_2021 discuss the potential of zero-inflated Poisson models for situations that "involve an excess number of zeroes (more than is expected under the Poisson distribution)". This is dealt with by using zero-inflated models, which treat additional zeroes as (possibly) derived from a separate process. Similarly, ZOIB regression separates the binary and continuous processes, treating a predictor's effect on one or both of them as if they were independent in the model. This is one potential limitation of the method, as it seems very likely that these two processes are correlated in the kind of rating data we are dealing with. So we advise researchers to think carefully about viewing the binary and continuous parts as independent. Whether further studies will be able to shed light on this remains to be seen, but the method is certainly worth exploring.
+
+[^phi]: Strictly speaking, the model can also give estimates of the precision parameter &phi; of the beta distribution. But estimating this is not necessary, and its use for inference is minimal. We estimated it in our model, but we will not discuss it here. 
+
+
+
+### Beta distribution
+
+Now a bit of background on beta regression and the beta distribution. The beta distribution fits proportional data well, as it is determined by two parameters *a* and *b*, which can be seen as representing counts of the two possible outcomes of a Bernoulli process. For example, we could model the distribution of a series of coin flips with the beta distribution, where *a* is the number of heads and *b* the number of tails. The beta distribution can then be used to model the probability of various combinations of heads and tails outcomes.[^beta] 
+
+[^beta]: Interactive illustration of beta distributions can be found on the Seeing Theory website here: <https://seeing-theory.brown.edu/probability-distributions/index.html#section2>.
+
+```{r}
+#| label: fig-beta-dist
+#| fig-cap: Example beta distributions with different values for *a* and *b*
+#| fig-width: 4.5
+#| fig-height: 3
+
+ggplot() +
+  geom_function(fun = dbeta, args = list(shape1 = 1, shape2 = 1),
+                aes(color = "Beta(a = 1, b = 1)"),
+                linewidth = 1) +
+  geom_function(fun = dbeta, args = list(shape1 = 2, shape2 = 6),
+                aes(color = "Beta(a = 2, b = 6)"),
+                linewidth = 1) +
+  geom_function(fun = dbeta, args = list(shape1 = 20, shape2 = 20),
+              aes(color = "Beta(a = 20, b = 20)"),
+              linewidth = 1) +
+  geom_function(fun = dbeta, args = list(shape1 = 50, shape2 = 5),
+                aes(color = "Beta(a = 70, b = 10)"),
+                linewidth = 1) +
+  scale_color_brewer(palette = "Set2", name = "",
+                        guide = guide_legend(nrow = 2)) +
+  labs(y = "") +
+  theme(legend.position = "bottom", 
+        axis.text.y = element_blank())
+```
+
+Two things are worth mentioning. First, the center of the distribution shifts above/below .5 as the ratio of *a*:*b* changes---the greater *a* is relative to *b* the more the center shifts above .5, and conversely, the greater *b* is relative to *a* the more the center shifts below .5. Second, the larger the total of *a*+*b* (i.e. the more flips we make), the narrower the distribution around the center. 
+
+For beta regression modeling, the beta distribution is parameterized sightly differently. In this case, the parameters *a* and *b* are transformed into a mean *&mu;* and precision *&phi;* parameter. In this parameterization, *&mu;* represents the center of the distribution corresponding to ($\frac{a}{a+b}$), and *&phi;* corresponds to the denominator $a+b$. A helpful way to understand this is that *&mu;* reflects the expected (average) value, i.e. the proportion of head flips, and *&phi;* reflects our certainty in the estimation of the mean. In other words, the precision represents the total number of coin flips, and more flips mean greater certainty about the coin's fairness (or bias) represented by the expected value *&mu;*. Thus, larger *&phi;* values give narrower curves, i.e. more precise estimates, even when we keep *&mu;* constant (@fig-plot4). So another way to think about the beta distribution is that it represents the probability density of the proportion of heads flips. 
+
+<!-- [Again, [this post](https://www.andrewheiss.com/blog/2021/11/08/beta-regression-guide/#beta-distributions-and-shape-parameters) is where I've got most of this from. -->
+
+```{r}
+#| label: fig-plot4
+#| fig-cap: "Example beta distributions with same a/b ratio but varying sizes. Expected value *&mu;* is represented by the dashed line."
+#| fig-width: 4.5
+#| fig-height: 3
+
+ggplot() +
+  xlim(0, 1) +
+  geom_vline(xintercept = .6, linetype = 2) +
+  geom_function(fun = dbeta, args = list(shape1 = 6, shape2 = 4),
+                aes(color = "Beta(a = 6, b = 4)"),
+                linewidth = 1) +
+  geom_function(fun = dbeta, args = list(shape1 = 60, shape2 = 40),
+                aes(color = "Beta(a = 60, b = 40)"),
+                linewidth = 1) +
+  geom_function(fun = dbeta, args = list(shape1 = 120, shape2 = 80),
+                aes(color = "Beta(a = 120, b = 80)"),
+                linewidth = 1) +
+  scale_color_brewer(palette = "Set2", name = "",
+                        guide = guide_legend(nrow = 2)) +
+  labs(x = "", y = "") +
+  theme(legend.position = "bottom") 
+```
+
+Interestingly, when the parameters of the beta distribution are below 1, the shape changes drastically, shifting most of the density toward the end points rather than the center (@fig-beta-dist3). This works to our advantage, since much of our data tends to bunch closer to the end points that in any central value, as we see in @fig-hist1 above. So the beta distribution can potentially work well even for the very skewed data we have.  
+
+```{r fig.width=6}
+#| label: fig-beta-dist3
+#| fig-cap: "Example beta distributions with paremeters between 0 and 1."
+#| fig-width: 4.5
+#| fig-height: 3
+
+ggplot() +
+  geom_function(fun = dbeta, args = list(shape1 = .5, shape2 = .5),
+                aes(color = "Beta(a = 0.5, b = 0.5)"),
+                linewidth = 1) +
+  geom_function(fun = dbeta, args = list(shape1 = .1, shape2 = .1),
+                aes(color = "Beta(a = 0.1, b = 0.1)"),
+                linewidth = 1) +
+  geom_function(fun = dbeta, args = list(shape1 = 2, shape2 = 2),
+              aes(color = "Beta(a = 2, b = 2)"),
+              linewidth = 1) +
+  scale_color_brewer(palette = "Set2", name = "",
+                        guide = guide_legend(nrow = 2)) +
+  labs(y = "") +
+  theme(legend.position = "bottom", 
+        axis.text.y = element_blank())
+```
+
+
+
+### The model
+
+How this will work in practice is that the beta regression model will generate estimates for both *&mu;* and *&phi;*. We can think of the model parameters for *&mu;* just like we would for a linear model---they represent the predicted rating value. [I'm not really sure how to interpret the estimates for *&phi;*, but I don't think this is an issue.] The only problem is that the beta distribution only holds for values between---but not including---0 and 1. Hence the need for the inflated components.
+
+For modeling, we used Bayesian models built with the `{brms}` package. Our model included fixed effects for `Variety` and the length of the direct object in letters (`z.DirObjLettLength`), and their interaction. Corpus model predictions were included as a control for possible associations of contextual factors other than direct object length. For modeling we refit the corpus model with `z.DirObjLettLength` removed, and recalculated predictions for our stimulus items with this second model. Thus the corpus predictions included in the analysis here (`z.Corpus_pred_min_length`) did not incorporate information about the length of the direct object.
+
+<!-- We'll use a custom coding for the effect of Variety. -->
+
+<!-- - Level 1: Inner (BrE + NZE) vs. Outer (IndE + SgE) Circle -->
+<!-- - Level 2: BrE vs. NZE -->
+<!-- - Level 3: IndE vs. SgE -->
+
+<!-- The `{hypr}` package is good for finding the right codings -->
+
+<!-- ```{r} -->
+<!-- #| echo: true -->
+
+<!-- custom_variety_hyp <- hypr::hypr( -->
+<!--   InnerCvvOuterC = BrE + NZE ~ IndE + SgE, -->
+<!--   BrEvsNZE = BrE ~ NZE, -->
+<!--   IndEvsSgE = IndE ~ SgE, -->
+<!--   levels = levels(ratings_df$Variety) -->
+<!-- ) -->
+<!-- custom_variety_hyp -->
+<!-- ``` -->
+
+<!-- Set the contrasts for a new `Variety` factor. -->
+
+<!-- ```{r} -->
+<!-- #| echo: true -->
+
+<!-- ratings_df$Variety <- ratings_df$Variety -->
+<!-- contrasts(ratings_df$Variety) <- hypr::contr.hypothesis(custom_variety_hyp) -->
+<!-- ``` -->
+
+
+The model included random intercepts for item and participant, as well as by-participant slopes for `z.DirObjLettLength` and `z.Corpus_pred_min_length`. All continuous predictors were centered and scaled by 2 standard deviations following @gelman_scaling_2008a. 
+
+```{r}
+#| label: model-zoib1
+#| tidy: true
+
+model_zoib1 <- bf(
+  rating_prop ~ (1|id) + (1|item) + (0 + z.Corpus_pred|id) + 
+    Variety + z.Corpus_pred + Variety:z.Corpus_pred,
+  phi ~ (1|id) + (1|item) + (0 + z.Corpus_pred|id) + 
+    Variety + z.Corpus_pred + Variety:z.Corpus_pred,
+  zoi ~ (1|id) + (1|item) + (0 + z.Corpus_pred|id) + 
+    Variety + z.Corpus_pred + Variety:z.Corpus_pred,
+  coi ~ (1|id) + (1|item) + (0 + z.Corpus_pred|id) + 
+    Variety + z.Corpus_pred + Variety:z.Corpus_pred,
+  family = zero_one_inflated_beta()
+)
+```
+
+### Model priors
+
+Setting reasonable priors for Bayesian models takes some care. We want to consider the different scales of our data and model coefficients carefully, given what we know about the likely distribution of the data. As in logistic regression, the coefficients for *&mu;* in the beta regression model are on the logit scale (recall the ZOI and COI components are logistic models).
+
+The trick with setting priors in generalized models is that flat or weakly informative priors on the link scale of our model parameters (here logit) are not necessarily weak on the natural outcome scale (probability or proportions). @gelman_weakly_2008 suggest a Cauchy prior with center 0 and scale 10 for logistic models, but if we convert this to the proportion/probability scale, it's clear that this prior assigns too much density to the very extremes (@fig-priors1). This prior is supposedly "weakly informative", but it is actually saying we think the most likely distribution of proportions is all 1 or all 0. So in the context of a beta regression model, this prior is telling the model that we expect our participants to always give either extremely high ratings or always extremely low ratings, and never anything in between. This is clearly not what we should expect. 
+
+```{r}
+#| label: fig-priors1
+#| fig-cap: Flat Cauchy(0, 10) prior recommended by Gelman et al. (2008)
+#| fig-subcap: 
+#|   - "Logit scale"
+#|   - "Proportion scale"
+#| fig-width: 6
+#| fig-height: 4
+#| layout-ncol: 2
+(tibble(x = rcauchy(10000, 0, 10)) |>
+  ggplot(aes(x)) +
+  # stat_density(geom = "line") +
+  # stat_density(aes(x2, color = "normal(0, 10)"), geom = "line") +
+  # stat_density(aes(x3, color = "normal(0, 1.5)"), geom = "line") +
+  geom_histogram(aes(x = x, y = ..density..), fill = "grey", color = "black", bins = 51) +
+    xlim(-50, 50) +
+   theme(axis.text.y = element_blank()) +
+  labs(x = "", y = ""))
+
+(tibble(x = plogis(rcauchy(10000, 0, 10))) |>
+  ggplot(aes(x)) +
+  # stat_density(geom = "line") +
+  # stat_density(aes(x2, color = "normal(0, 10)"), geom = "line") +
+  # stat_density(aes(x3, color = "normal(0, 1.5)"), geom = "line") +
+  geom_histogram(aes(x = x, y = ..density..), fill = "grey", color = "black", bins = 51) +
+    # xlim(-50, 50) +
+  theme(axis.text.y = element_blank()) +
+  labs(x = "", y = ""))
+```
+
+To get a more reasonably distributed prior on the *proportion/probability scale*, we need a much tighter distribution for our link (logit) scale. A Normal(0, 1.5) distribution often works well for logistic models. A narrower prior like this may seem like biasing the model, but it is worth remembering that i) the data will usually overwhelm the prior in Bayesian models; and ii) we know from lots of studies that we rarely see coefficients larger and +/-3 in logistic regression models. The prior for *&mu;* represents our prior belief about the distribution of the average rating (ignoring 0s and 100s). We can explore different candidate priors to see what they give us (@fig-priors2). If we want a "neutral" prior distribution that assigns roughly equal likelihood to most values between 0 and 100 (or 1), the Normal(0, 1.5) prior on the logit scale seems best.[^priorcheck] See McElreath [-@mcelreath_statistical_2020, 324-328] for discussion of setting reasonable priors in logistic regression models.
+
+[^priorcheck]: Ideally one would run a full prior predictive simulation, but we do not include that here. 
+
+```{r}
+#| label: fig-priors2
+#| fig-cap: "Weakly informative normal priors for logit parameters (&mu;, zoi and coi) on the probability scale."
+#| fig-subcap: 
+#|   - "Normal(0, 1)"
+#|   - "Normal(0, 1.5)"
+#|   - "Normal(0, 2)"
+#|   - "Normal(0, 3)"
+#| fig-width: 6
+#| fig-height: 4
+#| layout-ncol: 2
+tibble(x = plogis(rnorm(10000, 0, 1))) |> 
+  ggplot(aes(x)) +
+  geom_histogram(aes(x = x, y = ..density..), fill = "grey", color = "black", bins = 51) +
+  labs(x = "", y = "")
+tibble(x = plogis(rnorm(10000, 0, 1.5))) |> 
+  ggplot(aes(x)) +
+  geom_histogram(aes(x = x, y = ..density..), fill = "grey", color = "black", bins = 51) +
+  labs(x = "", y = "")
+tibble(x = plogis(rnorm(10000, 0, 2))) |> 
+  ggplot(aes(x)) +
+  geom_histogram(aes(x = x, y = ..density..), fill = "grey", color = "black", bins = 51) +
+  labs(x = "", y = "")
+tibble(x = plogis(rnorm(10000, 0, 3))) |> 
+  ggplot(aes(x)) +
+  geom_histogram(aes(x = x, y = ..density..), fill = "grey", color = "black", bins = 51) +
+  labs(x = "", y = "")
+```
+
+The precision parameter is different as it is on the log scale, not the logit. So to get the natural scale we just exponentiate. This makes sense, as the precision is always a positive value. [Still not sure what to make of this...]
+
+```{r}
+#| label: fig-priors3
+#| fig-cap: "Weakly informative normal priors for &phi; parameter on the natural scale (total number of observations)."
+#| fig-subcap: 
+#|   - "Normal(0, 1)"
+#|   - "Normal(0, 1.5)"
+#|   - "Normal(0, 2)"
+#|   - "Normal(0, 3)"
+#| fig-width: 6
+#| fig-height: 4
+#| layout-ncol: 2
+tibble(x = exp(rnorm(10000, 0, 1))) |> 
+  ggplot(aes(x)) +
+  geom_histogram(aes(x = x, y = ..density..), fill = "grey", color = "black", bins = 51) +
+  labs(x = "", y = "")
+tibble(x = exp(rnorm(10000, 0, 1.5))) |> 
+  ggplot(aes(x)) +
+  geom_histogram(aes(x = x, y = ..density..), fill = "grey", color = "black", bins = 51) +
+  labs(x = "", y = "")
+tibble(x = exp(rnorm(10000, 0, 2))) |> 
+  ggplot(aes(x)) +
+  geom_histogram(aes(x = x, y = ..density..), fill = "grey", color = "black", bins = 51) +
+  labs(x = "", y = "")
+tibble(x = exp(rnorm(10000, 0, 3))) |> 
+  ggplot(aes(x)) +
+  geom_histogram(aes(x = x, y = ..density..), fill = "grey", color = "black", bins = 51) +
+  labs(x = "", y = "")
+```
+
+
+I'm going to set the prior fors the beta regression to `normal(0, 3)` so that the model assigns greater prior probability to the higher and lower ends for our intermediate ratings, but still allows for values in the middle. I'll set the logistic regression priors a bit tighter at `normal(0, 1.5)` to give a roughly flat prior on the probability scale.
+
+```{r set-priors, echo=TRUE}
+#| label: set-priors
+#| echo: true
+priors <- c(
+  set_prior("normal(0, 1.5)", class = "b"), # our mu parameter
+  set_prior("normal(0, 2)", class = "b", dpar = "phi"),
+  set_prior("normal(0, 1.5)", class = "b", dpar = "zoi"),
+  set_prior("normal(0, 1.5)", class = "b", dpar = "coi")
+  )
+```
+
+Now fit the model.
+
+```{r}
+#| label: brm-zoib1
+#| echo: true
+if(!file.exists(here("model_output", "brm-zoib_gb_nz1.rds"))){
+  brm_zoib1 <- brm(
+    formula = model_zoib1,
+    data = ratings_df,
+    prior = priors,
+    cores = parallel::detectCores(),
+    iter = 4000,
+    refresh = 0
+    )
+} else {
+  brm_zoib1 <- readRDS(here("model_output", "brm-zoib_gb_nz1.rds"))
+}
+```
+
+A posterior predictive check, which compares our observed distribution to predictions from the model, suggests that our model does well at the ends of the scale, but does not predict ratings as well in the midrange. For comparison, we fit a model assuming a normal distribution, and we can see that the ZOIB model is clearly superior.
+
+```{r}
+#| label: fig-pp-check-zoib
+#| fig-cap: "Posterior predictive checks of ZOIB and linear models. Light lines indicate posterior predictions, solid lines indicate observed distribution."
+#| fig-subcap: 
+#|   - "ZOIB model"
+#|   - "Normal linear model"
+#| fig-width: 4.5
+#| fig-height: 3
+#| layout-ncol: 2
+#| 
+brm_gauss1 <- readRDS(here::here("model_output", "brm-gauss1_raw.rds"))
+pp_check(brm_zoib1, ndraws = 40L)
+pp_check(brm_gauss1, ndraws = 40L)
+```
+
+The output of the model is unwieldy, to say the least
+
+```{r}
+summary(brm_zoib1)
+```
+
+
+In the rest of this section, we will zoom in on the relevant bits, focusing on each of the beta, ZOI and COI components.
+
+### Beta regression component
+
+Bayesian models don't provide significance tests or p-values, but we can look at the posterior distributions and use those for inference. Basically, if the 90% highest posterior density intervals---the errorbars below---do not cross 0, we have good evidence of a real effect.
+
+The Beta regression component is predicting *&mu;* and *&phi;* for the beta distributed data, i.e. ratings between (0, 100), which we've converted to values between (0, 1). We'll focus on the estimate for the mean rating *&mu;*.
+
+```{r}
+#| label: fig-beta-coeffs
+#| fig-cap:  "Beta regression model estimates (&mu;)"
+#| fig-width: 7
+#| fig-height: 3
+brm_zoib1_tidy <- tidy(brm_zoib1, conf.level = .9)
+brm_zoib1_tidy |>
+  dplyr::filter(effect == "fixed", !str_detect(term, "(phi|zoi|coi)")) |>
+  ggplot(aes(estimate, term)) +
+  geom_vline(xintercept = 0, color = "gray", linewidth = 1) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = .1) +
+  geom_point() +
+  labs(x = "estimate (log odds scale)", y = "") +
+  theme(axis.line.y = element_blank())
+```
+
+For ratings *between* (0, 1), 
+
+- NZ participants do not appear to differ on average from British participants (`VarietyNZE`),
+- There is a strong positive association between corpus predictions and ratings for the split variant (`z.Corpus_pred_min_length`),
+- There is a strong negative association between the length of the direct object and ratings for the split variant (`z.DirObjLettLength`),
+- There is very little evidence of a difference in the association between length and variant preference when we compare BrE and NZE participants (`VarietyNZE:z.DirObjLettLength`). 
+
+Note that this component does **not** incorporate ratings of 0 or 1, and there were *many* of these in the NZE data, so we need to think carefully about what this might mean.
+
+
+### Zero-One binary component
+
+The ZOI model predicts the probability of an extreme rating of *either* 0 or 100.
+
+```{r fig.width=7}
+#| label: fig-zoi-coeffs
+#| fig-cap:  "Zero-One Inflated regression model estimates"
+#| fig-width: 7
+#| fig-height: 3.5
+brm_zoib1_tidy |>
+  dplyr::filter(effect == "fixed", str_detect(term, "zoi")) |>
+  ggplot(aes(estimate, term)) +
+  geom_vline(xintercept = 0, color = "gray", size = 1) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = .1) +
+  geom_point() +
+  labs(x = "estimate (log odds scale)", y = "") +
+  theme(axis.line.y = element_blank())
+```
+
+The model shows a dramatic difference for `zoi_VarietyNZE` (BrE vs. NZE). So it seems our **NZE raters were much more likely to give an extreme rating compared to BrE raters**.
+
+There is strong evidence of a negative association of direct object length (`zoi_z.DirObjLettLength`). The longer the direct object, the lower the probability of an extreme rating. This is a bit surprising, as we might expect this effect to be flat, or even positive. The thinking is that very long direct objects would yield very strong preferences for the continuous variant---essentially a kind fo floor effect. Conversely, short direct objects are expected to be more variable, and governed by other contextual (or lexical) factors. So what we see is that participants tended to give more extreme ratings in those items where we expected the least certainty with respect to the length effect. Curiously, this negative association of length is attenuated for NZE participants, reflected in the positive estimate for the interaction term (`zoi_VarietyNZE:z.DirObjLettLength`). 
+
+We also find weak but suggestive evidence for a negative association of corpus model predictions: the probability of an extreme rating goes down as corpus predictions for the split variant go up. This is a bit surprising as well, as we might expect this effect to be flat. That is, we might expect that as the corpus predictions reach the extremes, raters' preferences would mirror those predictions, leading to more extreme ratings. But since our items are balanced across the range of corpus predictions, we should get a roughly equal number of 0 and 100 ratings across all the trials. However, note that we do have two items (A11 and B11) that have exceptionally low corpus predictions, -7.3 and -6.3 log odds respectively.
+
+(@) A11: Dr Fuller knew he had **carried out** a caning that was fully deserved and he had done his duty.
+(@) B11: Though Mr Leigh-Pemberton did not **rule out** a role for such an institution, he argued that the future allocation of responsibilities would have to take account of any market development.
+
+Closer inspection of the items does not revel much however.
+
+```{r}
+#| label: fig-ratings-item-prop
+#| fig-cap: "Proportions of trials with extreme ratings for individual items. Items ordered by decreasing probability of split variant in the corpus-based model"
+#| fig-width: 6
+#| fig-height: 5
+ratings_df |>
+  group_by(item) |>
+  summarise(median_rating = median(rating_raw),
+            Corpus_pred = round(mean(Corpus_pred), 3),
+            n = n()
+            ) |>
+  left_join(
+    ratings_df |>
+      dplyr::filter(rating_prop == 0) |>
+      count(item, name = "N_zero"), by = "item"
+  ) |>
+  left_join(
+    ratings_df |>
+      dplyr::filter(rating_prop == 1) |>
+      count(item, name = "N_one"), by = "item"
+  ) |>
+  mutate(
+    Prop_Zero = round(N_zero/n, 3), Prop_One = round(N_one/n, 3),
+    Prop_Zero = ifelse(is.na(Prop_Zero), 0, Prop_Zero),
+    Prop_One = ifelse(is.na(Prop_One), 0, Prop_One)
+    ) |> 
+  pivot_longer(cols = c("Prop_Zero", "Prop_One")) |> 
+  mutate(name = fct_recode(name, "rating = 0" = "Prop_Zero", "rating = 100" = "Prop_One")) |> 
+  ggplot(aes(reorder(item, Corpus_pred), value, fill = name)) +
+  geom_col(position = "dodge") +
+  annotate(geom = "text", x = "A11", y = .8, label = "Lower corpus\nmodel predictions",
+           hjust = 1, vjust = 0) +
+  annotate(geom = "text", x = "B9", y = .8, label = "Higher corpus\nmodel predictions",
+           hjust = 1, vjust = 1) +
+  coord_flip() +
+  labs(x = "", y = "Proportion of all trials") +
+  scale_fill_manual(name = "", values = ggthemes::colorblind_pal()(4)[3:4]) +
+  theme(legend.position = "top")
+```
+
+
+
+### Conditional-One component
+
+The final component predicts the probability of a 100 rating, given that the rating was either 0 or 100. Here we expect a strong positive association with `z.Corpus_pred_min_length`, a strong negative association with `z.DirObjLettLength`, and if the general variety trends hold for extreme and non-extreme ratings, we expect to see litter difference between British and New Zealand participants on average.
+
+```{r}
+#| label: fig-coi-coeffs
+#| fig-cap:  "Conditional-One Inflated regression model estimates"
+#| fig-width: 7
+#| fig-height: 3.5
+brm_zoib1_tidy |>
+  dplyr::filter(effect == "fixed", str_detect(term, "coi")) |>
+  ggplot(aes(estimate, term)) +
+  geom_vline(xintercept = 0, color = "gray", size = 1) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = .1) +
+  geom_point() +
+  labs(x = "estimate (log odds scale)", y = "") +
+  theme(axis.line.y = element_blank())
+```
+
+@fig-coi-coeffs shows that our expectations are largely confirmed. A somewhat unexpected finding is the positive interaction term for the interaction of length and variety `coi_VarietyNZE:z.DirObjLettLength`. Here the association with length is weaker for New Zealand participants compared to British participants. Why this should be is not entirely clear.
+
+
+### Conditional effects
+
+```{r}
+#| label: conditional-effs-brm-2var
+#| cache: true
+
+cond_effs_mu <- conditional_effects(brm_zoib1, dpar = "mu")
+cond_effs_zoi <- conditional_effects(brm_zoib1, dpar = "zoi")
+cond_effs_coi <- conditional_effects(brm_zoib1, dpar = "coi")
+```
+
+We can look at the conditional effects plots for our predictors to get a better sense of what is going on. We'll start with **Variety**:
+
+```{r}
+#| label: fig-CE-variety
+#| fig-cap: "Conditional effects of `Variety` on ratings"
+#| fig-subcap: 
+#|   - "Estimated mean rating for ratings within (0, 100)"
+#|   - "Probability of rater assigning either 0 or 100 rating"
+#|   - "Probability of 100 rating, given that rater assigned either 0 or 100"
+#| fig-width: 5
+#| fig-height: 4
+#| layout-ncol: 2
+cond_effs_mu$Variety |>
+  mutate(across(c(estimate__, lower__, upper__), ~.x*100)) |>
+  ggplot(aes(Variety, estimate__)) +
+   geom_hline(yintercept = 50, color = "grey", size = 1) +
+  geom_errorbar(aes(ymin = lower__, ymax = upper__), width = .1) +
+  geom_point(size = 4) +
+  labs(x = "", y = "Predicted rating")
+ 
+cond_effs_zoi$Variety |>
+  # mutate(across(c(estimate__, lower__, upper__), ~.x*100)) |>
+  ggplot(aes(Variety, estimate__)) +
+    geom_hline(yintercept = .5, color = "grey", size = 1) +
+  geom_errorbar(aes(ymin = lower__, ymax = upper__), width = .1) +
+  geom_point(size = 4) +
+  # facet_wrap(~Variety) +
+  labs(x = "", y = "Predicted probability")
+
+cond_effs_coi$Variety |>
+  # mutate(across(c(estimate__, lower__, upper__), ~.x*100)) |>
+  ggplot(aes(Variety, estimate__)) +
+   geom_hline(yintercept = .5, color = "grey", size = 1) +
+  geom_errorbar(aes(ymin = lower__, ymax = upper__), width = .1) +
+  geom_point(size = 4) +
+  labs(x = "", y = "Predicted probability") +
+  ggtitle("Probability of 100 rating,\ngiven that rater assigned either 0 or 100")
+```
+
+So here we see a better picture of the Variety effects:
+
+- NZE raters are clearly more likely to use the extreme ends of the scale, and
+- Inner Circle raters tend to give slightly higher ratings to the split variant on average compared to our Outer Circle raters. Here the Beta and COI components of the model agree.
+
+Turning to the effect of corpus predictions, the patterns are largely like we'd expect: a strong positive association in both the Beta and COI component. The interesting case is the ZOI component, which shows the negative association between corpus prediction and probability of extreme rating.
+
+
+```{r}
+#| label: fig-CE-pred
+#| fig-cap: "Conditional effects of `z.Corpus_pred_min_length` on ratings"
+#| fig-subcap: 
+#|   - "Estimated mean rating for ratings within (0, 100)"
+#|   - "Probability of rater assigning either 0 or 100 rating"
+#|   - "Probability of 100 rating, given that rater assigned either 0 or 100"
+#| fig-width: 5
+#| fig-height: 3.5
+#| layout-ncol: 2
+cond_effs_mu$z.Corpus_pred |>
+  mutate(across(c(estimate__, lower__, upper__), ~.x*100)) |>
+  ggplot(aes(z.Corpus_pred, estimate__)) +
+  geom_ribbon(aes(ymin = lower__, ymax= upper__), fill = "gray", alpha = .5) +
+  geom_line() +
+  labs(x = "Corpus model predicted log odds", y = "Predicted rating")
+cond_effs_zoi$z.Corpus_pred |>
+  ggplot(aes(z.Corpus_pred, estimate__)) +
+  geom_ribbon(aes(ymin = lower__, ymax= upper__), fill = "gray", alpha = .5) +
+  geom_line() +
+  labs(x = "Corpus model predicted log odds", y = "Predicted probability")
+cond_effs_coi$z.Corpus_pred |>
+  ggplot(aes(z.Corpus_pred, estimate__)) +
+  geom_ribbon(aes(ymin = lower__, ymax= upper__), fill = "gray",  alpha = .5) +
+  geom_line() +
+  labs(x = "Corpus model predicted log odds", y = "Predicted probability")
+```
+
+### Interaction effects
+
+Starting with the beta regression model, we see a familiar pattern from the linear models, which is nice (plot a. in @fig-interaction1) Things get more interaesting when we look at the zero-one and conditional one components (plots. b. and c. in @fig-interaction1). The ZOI component (plot b.) predicts the probability of *either* extreme rating, i.e. the probability of giving a 0 or 100 vs. giving some rating in between those values. What we can see is that extreme ratings become slightly **less** likely the longer the direct object. This is most noticeable in the NZE data, where people were much more likely to give an extreme rating in general. Lastly, the slightly flatter line for the NZE participants in plot c. suggests they were somewhat less likely that British participants to give a 0 rating as the direct object got longer. In other words, in a kind of 'forced choice' context, NZ participants showed a weaker effect of length compared to British participants (see @fig-coi-coeffs). 
+ 
+```{r}
+#| label: fig-interaction1
+#| fig-cap: "Interactions of `z.Corpus_pred_min_length` on ratings for the beta model"
+#| fig-subcap: 
+#|   - "Estimated mean rating for ratings within (0, 100)"
+#|   - "Probability of rater assigning either 0 or 100 rating"
+#|   - "Probability of 100 rating, given that rater assigned either 0 or 100"
+#| fig-width: 6
+#| fig-height: 3
+#| layout-ncol: 1
+
+cond_effs_mu$`z.Corpus_pred:Variety` |>
+  mutate(across(c(estimate__, lower__, upper__), ~.x*100)) |>
+  ggplot(aes(z.Corpus_pred, estimate__)) +
+  geom_ribbon(aes(ymin = lower__, ymax= upper__), fill = "gray", alpha = .5) +
+  geom_line() +
+  labs(x = "Direct object length", y = "Predicted rating") +
+  facet_wrap(~Variety) 
+cond_effs_zoi$`z.Corpus_pred:Variety` |>
+  # mutate(across(c(estimate__, lower__, upper__), ~.x*100)) |>
+  ggplot(aes(z.Corpus_pred, estimate__)) +
+  geom_ribbon(aes(ymin = lower__, ymax= upper__), fill = "gray", alpha = .5) +
+  geom_line() +
+  labs(x = "Direct object length", y = "Predicted rating") +
+  facet_wrap(~Variety) 
+cond_effs_coi$`z.Corpus_pred:Variety` |>
+  ggplot(aes(z.Corpus_pred, estimate__)) +
+  geom_ribbon(aes(ymin = lower__, ymax= upper__), fill = "gray", alpha = .5) +
+  geom_line() +
+  labs(x = "Direct object length", y = "Predicted rating") +
+  facet_wrap(~Variety) 
+```
+
+
+
+
+## Conclusion {#sec-conclusion}
+
+Add conclusion here.
+
+
+## Data availability {#sec-data-availability}
+
+Complete dataset and R code for this paper can be found at the following Open Science Framework repository: [link](link). ZOIB regression analyses were conducted in R using the `{brms}` package [@burkner_brms_2017]. 
+
+
+## References
